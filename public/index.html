@@ -1,183 +1,501 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>LLM Chat App</title>
+		<meta name="color-scheme" content="light" />
+		<meta
+			name="description"
+			content="GEクリエイティブ 社内マニュアルAI。登録済みの社内マニュアルをもとに質問へ回答します。"
+		/>
+		<title>社内マニュアルAI｜GEクリエイティブ</title>
 		<style>
 			:root {
-				--primary-color: #f6821f;
-				--primary-hover: #e67e22;
-				--light-bg: #f9fafb;
-				--border-color: #e5e7eb;
-				--text-color: #1f2937;
-				--text-light: #6b7280;
-				--user-msg-bg: #fff2e6;
-				--assistant-msg-bg: #f3f4f6;
+				--bg: #f5f7f6;
+				--surface: #ffffff;
+				--surface-soft: #f8faf9;
+				--text: #1f2d29;
+				--text-muted: #68766f;
+				--border: #dfe6e2;
+				--accent: #286a53;
+				--accent-dark: #1f5643;
+				--accent-soft: #eaf3ef;
+				--user-bg: #e8f1ed;
+				--danger: #b24b43;
+				--shadow: 0 16px 48px rgba(31, 68, 53, 0.08);
 			}
 
 			* {
 				box-sizing: border-box;
+			}
+
+			html,
+			body {
 				margin: 0;
-				padding: 0;
+				min-height: 100%;
 			}
 
 			body {
 				font-family:
-					-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-					Cantarell, sans-serif;
-				line-height: 1.6;
-				color: var(--text-color);
-				max-width: 800px;
+					-apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+					"Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+				background: var(--bg);
+				color: var(--text);
+				-webkit-font-smoothing: antialiased;
+			}
+
+			button,
+			textarea {
+				font: inherit;
+			}
+
+			button {
+				cursor: pointer;
+			}
+
+			button:focus-visible,
+			textarea:focus-visible {
+				outline: 3px solid rgba(40, 106, 83, 0.18);
+				outline-offset: 2px;
+			}
+
+			.app-shell {
+				width: min(1040px, calc(100% - 32px));
 				margin: 0 auto;
-				padding: 1rem;
+				padding: 28px 0 24px;
 			}
 
-			header {
-				text-align: center;
-				margin-bottom: 2rem;
-				padding: 1rem 0;
-				border-bottom: 1px solid var(--border-color);
+			.app-header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 20px;
+				margin-bottom: 18px;
 			}
 
-			h1 {
-				font-size: 1.5rem;
-				color: var(--primary-color);
+			.brand {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				min-width: 0;
+			}
+
+			.brand-mark {
+				width: 42px;
+				height: 42px;
+				border-radius: 12px;
+				background: var(--accent);
+				color: #fff;
+				display: grid;
+				place-items: center;
+				font-weight: 750;
+				letter-spacing: 0.02em;
+				box-shadow: 0 8px 18px rgba(40, 106, 83, 0.18);
+			}
+
+			.brand-copy {
+				min-width: 0;
+			}
+
+			.brand-copy h1 {
+				margin: 0;
+				font-size: clamp(20px, 3vw, 27px);
+				line-height: 1.3;
+				letter-spacing: 0.01em;
+			}
+
+			.brand-copy p {
+				margin: 4px 0 0;
+				font-size: 12px;
+				color: var(--text-muted);
+			}
+
+			.header-actions {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				flex-shrink: 0;
+			}
+
+			.status {
+				display: inline-flex;
+				align-items: center;
+				gap: 7px;
+				font-size: 11px;
+				color: var(--text-muted);
+				white-space: nowrap;
+			}
+
+			.status::before {
+				content: "";
+				width: 7px;
+				height: 7px;
+				border-radius: 50%;
+				background: #6fa27f;
+			}
+
+			.clear-button {
+				border: 1px solid var(--border);
+				background: var(--surface);
+				color: var(--text-muted);
+				border-radius: 10px;
+				padding: 8px 12px;
+				font-size: 12px;
+				transition: 0.16s ease;
+			}
+
+			.clear-button:hover {
+				border-color: #b9cbc2;
+				color: var(--text);
+				background: var(--surface-soft);
+			}
+
+			.intro {
+				margin-bottom: 14px;
+				padding: 13px 16px;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				background: rgba(255, 255, 255, 0.72);
+				color: var(--text-muted);
+				font-size: 12px;
+				line-height: 1.8;
 			}
 
 			.chat-container {
 				display: flex;
 				flex-direction: column;
-				height: calc(100vh - 200px);
-				min-height: 400px;
-				border: 1px solid var(--border-color);
-				border-radius: 8px;
+				height: min(720px, calc(100dvh - 190px));
+				min-height: 520px;
+				border: 1px solid var(--border);
+				border-radius: 18px;
+				background: var(--surface);
 				overflow: hidden;
+				box-shadow: var(--shadow);
 			}
 
 			.chat-messages {
 				flex: 1;
 				overflow-y: auto;
-				padding: 1rem;
-				background-color: var(--light-bg);
+				padding: 26px;
+				background:
+					linear-gradient(rgba(248, 250, 249, 0.92), rgba(248, 250, 249, 0.92)),
+					var(--surface-soft);
+				scroll-behavior: smooth;
 			}
 
 			.message {
-				margin-bottom: 1rem;
-				padding: 0.75rem;
-				border-radius: 8px;
-				max-width: 80%;
+				max-width: min(78%, 720px);
+				margin-bottom: 18px;
+				padding: 14px 16px;
+				border-radius: 14px;
+				font-size: 14px;
+				line-height: 1.9;
+				animation: appear 0.18s ease both;
 			}
 
 			.message p {
-				white-space: pre-line;
 				margin: 0;
+				white-space: pre-wrap;
 				overflow-wrap: anywhere;
 			}
 
 			.user-message {
-				background-color: var(--user-msg-bg);
-				align-self: flex-end;
 				margin-left: auto;
+				background: var(--user-bg);
+				border: 1px solid #d8e7df;
+				border-bottom-right-radius: 5px;
 			}
 
 			.assistant-message {
-				background-color: var(--assistant-msg-bg);
-				align-self: flex-start;
-			}
-
-			.message-input {
-				display: flex;
-				padding: 0.75rem;
-				border-top: 1px solid var(--border-color);
-				background-color: white;
-			}
-
-			#user-input {
-				flex: 1;
-				padding: 0.75rem;
-				border: 1px solid var(--border-color);
-				border-radius: 4px;
-				font-family: inherit;
-				resize: none;
-				min-height: 44px;
-			}
-
-			#send-button {
-				margin-left: 0.5rem;
-				padding: 0 1rem;
-				background-color: var(--primary-color);
-				color: white;
-				border: none;
-				border-radius: 4px;
-				cursor: pointer;
-				transition: background-color 0.2s;
-			}
-
-			#send-button:hover {
-				background-color: var(--primary-hover);
-			}
-
-			#send-button:disabled {
-				background-color: var(--text-light);
-				cursor: not-allowed;
+				margin-right: auto;
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-bottom-left-radius: 5px;
+				box-shadow: 0 4px 14px rgba(31, 68, 53, 0.04);
 			}
 
 			.typing-indicator {
 				display: none;
-				font-style: italic;
-				color: var(--text-light);
-				padding: 1rem;
+				align-items: center;
+				gap: 8px;
+				padding: 10px 22px;
+				border-top: 1px solid #eef2ef;
+				background: var(--surface);
+				font-size: 12px;
+				color: var(--text-muted);
 			}
 
 			.typing-indicator.visible {
-				display: block;
+				display: flex;
+			}
+
+			.typing-dots {
+				display: inline-flex;
+				gap: 4px;
+			}
+
+			.typing-dots span {
+				width: 5px;
+				height: 5px;
+				border-radius: 50%;
+				background: #87a795;
+				animation: pulse 1.1s infinite;
+			}
+
+			.typing-dots span:nth-child(2) {
+				animation-delay: 0.16s;
+			}
+
+			.typing-dots span:nth-child(3) {
+				animation-delay: 0.32s;
+			}
+
+			.message-input {
+				display: flex;
+				align-items: flex-end;
+				gap: 12px;
+				padding: 16px;
+				border-top: 1px solid var(--border);
+				background: var(--surface);
+			}
+
+			.input-wrap {
+				flex: 1;
+				min-width: 0;
+			}
+
+			#user-input {
+				width: 100%;
+				min-height: 54px;
+				max-height: 150px;
+				resize: none;
+				padding: 14px 15px;
+				border: 1px solid #cbd7d1;
+				border-radius: 12px;
+				background: #fff;
+				color: var(--text);
+				font-size: 14px;
+				line-height: 1.6;
+				transition: border-color 0.16s ease, box-shadow 0.16s ease;
+			}
+
+			#user-input::placeholder {
+				color: #98a39e;
+			}
+
+			#user-input:focus {
+				border-color: #7da895;
+				box-shadow: 0 0 0 3px rgba(40, 106, 83, 0.08);
+				outline: none;
+			}
+
+			.input-note {
+				margin-top: 6px;
+				font-size: 10px;
+				color: #89958f;
+			}
+
+			#send-button {
+				min-width: 92px;
+				height: 54px;
+				padding: 0 18px;
+				border: none;
+				border-radius: 12px;
+				background: var(--accent);
+				color: #fff;
+				font-size: 14px;
+				font-weight: 650;
+				transition: 0.16s ease;
+			}
+
+			#send-button:hover:not(:disabled) {
+				background: var(--accent-dark);
+				transform: translateY(-1px);
+			}
+
+			#send-button:disabled {
+				background: #aab8b1;
+				cursor: not-allowed;
 			}
 
 			footer {
-				margin-top: 1rem;
+				padding: 12px 4px 0;
 				text-align: center;
-				font-size: 0.85rem;
-				color: var(--text-light);
+				font-size: 10px;
+				line-height: 1.7;
+				color: #89958f;
+			}
+
+			.error-message {
+				border-color: #eed5d1;
+				background: #fff9f8;
+				color: var(--danger);
+			}
+
+			@keyframes appear {
+				from {
+					opacity: 0;
+					transform: translateY(4px);
+				}
+				to {
+					opacity: 1;
+					transform: translateY(0);
+				}
+			}
+
+			@keyframes pulse {
+				0%,
+				80%,
+				100% {
+					opacity: 0.35;
+				}
+				40% {
+					opacity: 1;
+					transform: translateY(-2px);
+				}
+			}
+
+			@media (max-width: 720px) {
+				.app-shell {
+					width: 100%;
+					padding: 14px 12px 12px;
+				}
+
+				.app-header {
+					align-items: flex-start;
+					margin-bottom: 12px;
+				}
+
+				.brand-mark {
+					width: 38px;
+					height: 38px;
+					border-radius: 10px;
+				}
+
+				.brand-copy p,
+				.status {
+					display: none;
+				}
+
+				.clear-button {
+					padding: 7px 10px;
+					font-size: 11px;
+				}
+
+				.intro {
+					padding: 11px 13px;
+					font-size: 11px;
+					margin-bottom: 10px;
+				}
+
+				.chat-container {
+					height: calc(100dvh - 154px);
+					min-height: 440px;
+					border-radius: 14px;
+				}
+
+				.chat-messages {
+					padding: 16px 13px;
+				}
+
+				.message {
+					max-width: 90%;
+					font-size: 13px;
+					line-height: 1.85;
+					padding: 12px 13px;
+				}
+
+				.message-input {
+					gap: 8px;
+					padding: 10px;
+				}
+
+				#user-input {
+					min-height: 50px;
+					font-size: 16px;
+					padding: 12px 13px;
+				}
+
+				#send-button {
+					min-width: 68px;
+					height: 50px;
+					padding: 0 12px;
+				}
+
+				.input-note {
+					display: none;
+				}
+
+				footer {
+					display: none;
+				}
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				*,
+				*::before,
+				*::after {
+					animation: none !important;
+					transition: none !important;
+					scroll-behavior: auto !important;
+				}
 			}
 		</style>
 	</head>
 	<body>
-		<header>
-			<h1>Cloudflare AI Chat</h1>
-			<p>Powered by Cloudflare Workers AI</p>
-		</header>
-
-		<div class="chat-container">
-			<div id="chat-messages" class="chat-messages">
-				<div class="message assistant-message">
-					<p>
-						Hello! I'm an LLM chat app powered by Cloudflare Workers AI. How can
-						I help you today?
-					</p>
+		<main class="app-shell">
+			<header class="app-header">
+				<div class="brand">
+					<div class="brand-mark" aria-hidden="true">AI</div>
+					<div class="brand-copy">
+						<h1>社内マニュアルAI</h1>
+						<p>GEクリエイティブ</p>
+					</div>
 				</div>
+				<div class="header-actions">
+					<span class="status">社内マニュアルを参照</span>
+					<button id="clear-button" class="clear-button" type="button">
+						会話をクリア
+					</button>
+				</div>
+			</header>
+
+			<div class="intro">
+				社内マニュアルをもとに回答します。マニュアルから確認できない内容は、推測せずその旨を回答します。
 			</div>
 
-			<div class="typing-indicator" id="typing-indicator">
-				AI is thinking...
-			</div>
+			<section class="chat-container" aria-label="社内マニュアルAI チャット">
+				<div id="chat-messages" class="chat-messages" aria-live="polite">
+					<div class="message assistant-message">
+						<p>こんにちは。社内マニュアルAIです。勤怠・申請・社内ルールなど、確認したいことをそのまま質問してください。</p>
+					</div>
+				</div>
 
-			<div class="message-input">
-				<textarea
-					id="user-input"
-					placeholder="Type your message here..."
-					rows="1"
-					autofocus
-				></textarea>
-				<button id="send-button">Send</button>
-			</div>
-		</div>
+				<div class="typing-indicator" id="typing-indicator" role="status">
+					<span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+					<span>マニュアルを確認しています...</span>
+				</div>
 
-		<footer>
-			<p>Cloudflare Workers AI Chat Template &copy; 2025</p>
-		</footer>
+				<div class="message-input">
+					<div class="input-wrap">
+						<textarea
+							id="user-input"
+							placeholder="社内ルールや申請方法について質問してください"
+							rows="1"
+							maxlength="1000"
+							autofocus
+						></textarea>
+						<div class="input-note">Enterで送信 / Shift + Enterで改行</div>
+					</div>
+					<button id="send-button" type="button">送信</button>
+				</div>
+			</section>
 
-		<!-- Chat app script -->
+			<footer>
+				回答は登録済みの社内マニュアルをもとにAIが生成します。重要な判断が必要な場合は、最新の社内規程も確認してください。
+			</footer>
+		</main>
+
 		<script src="chat.js"></script>
 	</body>
 </html>
