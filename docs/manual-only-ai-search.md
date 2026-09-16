@@ -30,9 +30,10 @@ AI Searchから送られる `chunks` イベントをサーバーで検査して�
 依存導入済みの環境で：
 
 ```sh
-node --test test/grounding.test.mjs
+node --test test/grounding.node-test.mjs
 ```
 
+Vitestの自動検出と混同しないよう、Node標準テストは `.node-test.mjs` としています。
 既存開発依存のTypeScriptで対象バックエンドをstrictコンパイルし、一時ディレクトリのJSをNode標準テストで実行する。模擬文書・模擬SSEのみを使い、実LLMやCloudflareにはアクセスしない。
 2026-09-17時点のローカル実行: 41/41 PASS。
 対象: 接続指定、サーバー指示、古いAI回答の除外、0件拒否、検索エラー、ソース欠落、UTF-8/CRLF分割、ストリーミング維持、停止、入力/ロール/リクエストサイズ検証。
