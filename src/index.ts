@@ -1,102 +1,97 @@
-/**
- * LLM Chat Application Template
- *
- * A simple chat application using Cloudflare Workers AI.
- * This template demonstrates how to implement an LLM-powered chat interface with
- * streaming responses using Server-Sent Events (SSE).
- *
- * @license MIT
- */
-import { Env, ChatMessage } from "./types";
+/** 社内マニュアルAI. Access must protect this Worker and /api/* (all traffic). */
+import type { Env, ChatMessage } from "./types";
+import { groundedStream, record, SYSTEM_PROMPT } from "./grounding";
 
-// Model ID for Workers AI model
-// https://developers.cloudflare.com/workers-ai/models/
-const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct-fp8";
+const MAX_BODY_BYTES = 524288;
+const MAX_MESSAGES = 20;
+const MAX_QUESTION = 1000;
 
-// Default system prompt
-const SYSTEM_PROMPT =
-	"You are a helpful, friendly assistant. Provide concise and accurate responses.";
+class InputError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+function jsonError(status: number, error: string): Response {
+  return Response.json({ error }, { status, headers: {
+    "cache-control": "no-store", "x-content-type-options": "nosniff",
+  } });
+}
+
+async function readBody(request: Request): Promise<unknown> {
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
+    throw new InputError(415, "JSON形式で送信してください。");
+  if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES)
+    throw new InputError(413, "送信内容が大きすぎます。会話をクリアして再度お試しください。");
+  if (!request.body) throw new InputError(400, "質問を入力してください。");
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "", size = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > MAX_BODY_BYTES) throw new InputError(413, "送信内容が大きすぎます。会話をクリアしてください。");
+      text += decoder.decode(part.value, { stream: true });
+    }
+    text += decoder.decode();
+  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  try { return JSON.parse(text); } catch { throw new InputError(400, "送信内容を確認してください。"); }
+}
+
+/** Discard old assistant replies: a previous generic answer is NOT a manual. */
+export function manualMessages(body: unknown): ChatMessage[] {
+  if (!record(body) || !Array.isArray(body.messages) || !body.messages.length || body.messages.length > MAX_MESSAGES)
+    throw new InputError(400, "質問を入力してください。会話が長い場合はクリアしてください。");
+  const questions: string[] = [];
+  for (const msg of body.messages) {
+    if (!record(msg) || (msg.role !== "user" && msg.role !== "assistant") || typeof msg.content !== "string")
+      throw new InputError(400, "送信内容を確認してください。");
+    if (msg.role === "user") {
+      const text = msg.content.trim();
+      if (!text || text.length > MAX_QUESTION) throw new InputError(400, "質問は1〜1000文字で入力してください。");
+      questions.push(text);
+    }
+  }
+  if (body.messages[body.messages.length - 1].role !== "user" || !questions.length)
+    throw new InputError(400, "質問を入力してください。");
+  const latest = questions.pop()!;
+  const previous = questions.slice(-3);
+  const query = previous.length
+    ? `過去の質問は話題の理解にだけ使ってください。社内ルールの根拠ではありません。\n過去の質問: ${JSON.stringify(previous)}\n\n今回回答する質問:\n${latest}`
+    : latest;
+  return [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: query }];
+}
 
 export default {
-	/**
-	 * Main request handler for the Worker
-	 */
-	async fetch(
-		request: Request,
-		env: Env,
-		ctx: ExecutionContext,
-	): Promise<Response> {
-		const url = new URL(request.url);
-
-		// Handle static assets (frontend)
-		if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
-			return env.ASSETS.fetch(request);
-		}
-
-		// API Routes
-		if (url.pathname === "/api/chat") {
-			// Handle POST requests for chat
-			if (request.method === "POST") {
-				return handleChatRequest(request, env);
-			}
-
-			// Method not allowed for other request types
-			return new Response("Method not allowed", { status: 405 });
-		}
-
-		// Handle 404 for unmatched routes
-		return new Response("Not found", { status: 404 });
-	},
-} satisfies ExportedHandler<Env>;
-
-/**
- * Handles chat API requests
- */
-async function handleChatRequest(
-	request: Request,
-	env: Env,
-): Promise<Response> {
-	try {
-		// Parse JSON request body
-		const { messages = [] } = (await request.json()) as {
-			messages: ChatMessage[];
-		};
-
-		// Add system prompt if not present
-		if (!messages.some((msg) => msg.role === "system")) {
-			messages.unshift({ role: "system", content: SYSTEM_PROMPT });
-		}
-
-		const inputs = {
-			messages,
-			max_tokens: 1024,
-			stream: true,
-		} satisfies AiTextGenerationInput & { stream: true };
-
-		const stream = await env.AI.run<typeof MODEL_ID>(MODEL_ID, inputs, {
-			// Uncomment to use AI Gateway
-			// gateway: {
-			//   id: "YOUR_GATEWAY_ID", // Replace with your AI Gateway ID
-			//   skipCache: false,      // Set to true to bypass cache
-			//   cacheTtl: 3600,        // Cache time-to-live in seconds
-			// },
-		});
-
-		return new Response(stream, {
-			headers: {
-				"content-type": "text/event-stream; charset=utf-8",
-				"cache-control": "no-cache",
-				connection: "keep-alive",
-			},
-		});
-	} catch (error) {
-		console.error("Error processing chat request:", error);
-		return new Response(
-			JSON.stringify({ error: "Failed to process request" }),
-			{
-				status: 500,
-				headers: { "content-type": "application/json" },
-			},
-		);
-	}
-}
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    if (url.pathname !== "/api/chat") return jsonError(404, "ページが見つかりません。");
+    if (request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST", "cache-control": "no-store" } });
+    // Not a replacement for Access/JWT validation. Reject cross-origin browser writes.
+    const origin = request.headers.get("origin");
+    if ((origin && origin !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site")
+      return jsonError(403, "このページから質問を送信してください。");
+    try {
+      const messages = manualMessages(await readBody(request));
+      // NO AI.run(), generic fallback, external model, or browser-supplied model/system prompt.
+      const upstream = await env.AI.chatCompletions({
+        messages, stream: true,
+        ai_search_options: {
+          retrieval: { max_num_results: 8, metadata_only: false, return_on_failure: false },
+          query_rewrite: { enabled: true },
+          // Avoid cached completions created before the manual-only prompt was applied.
+          cache: { enabled: false },
+        },
+      });
+      return new Response(groundedStream(upstream, request.signal), { headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-store", "x-content-type-options": "nosniff",
+        "x-manual-ai-version": "manual-only-20260917",
+      } });
+    } catch (error) {
+      if (error instanceof InputError) return jsonError(error.status, error.message);
+      console.error("MANUAL_AI: AI Search request failed");
+      return jsonError(502, "マニュアルを検索できませんでした。時間をおいて再度お試しください。");
+    }
+  },
+};
